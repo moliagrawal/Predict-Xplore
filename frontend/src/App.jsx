@@ -19,6 +19,16 @@ import { ToastContainer,Slide } from 'react-toastify';
 import ManageUser from './admin/pages/ManageUser';
 import ContainerTestRun from './components/ContainerTestRun';
 
+// STEAD Anomaly Detection Pages
+import STEADDashboard from './user/STEADDashboard';
+import RTSPLivePage from './user/RTSPLivePage';
+import VideoUploadPage from './user/VideoUploadPage';
+
+// Admin STEAD Pages
+import AdminSTEADDashboard from './admin/pages/AdminSTEADDashboard';
+import AdminRTSPLivePage from './admin/pages/AdminRTSPLivePage';
+import AdminVideoUploadPage from './admin/pages/AdminVideoUploadPage';
+
 function App() {
   return (
     <div>
@@ -38,6 +48,11 @@ function App() {
           <Route path="/reports" element={<Reportpage />} />
           <Route path="/container-test-run" element={<ContainerTestRun/>} />
           
+          {/* STEAD Anomaly Detection Routes */}
+          <Route path="/stead" element={<STEADDashboard />} />
+          <Route path="/stead/rtsp-live" element={<RTSPLivePage />} />
+          <Route path="/stead/video-upload" element={<VideoUploadPage />} />
+          
           {/* Admin Pages */}
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
           <Route path="/admin/models" element={<AdminModelList />} />
@@ -48,6 +63,11 @@ function App() {
           <Route path="/admin/manage-user" element={<ManageUser />} />
           <Route path="/admin/model-proceed" element={<ModelProceed />} />
           <Route path="/admin/model-test" element={<AdminModelTest />} />
+          
+          {/* Admin STEAD Anomaly Detection Routes */}
+          <Route path="/admin/stead" element={<AdminSTEADDashboard />} />
+          <Route path="/admin/stead/rtsp-live" element={<AdminRTSPLivePage />} />
+          <Route path="/admin/stead/video-upload" element={<AdminVideoUploadPage />} />
         </Routes>
       </Router>
     </div>

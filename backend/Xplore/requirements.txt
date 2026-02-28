@@ -29,6 +29,10 @@ timm
 torch==2.7.1
 torchaudio==2.7.1
 torchvision==0.22.1
+
+# STEAD Model Dependencies
+performer-pytorch>=1.1.4
+torchinfo
 ultralytics==8.3.151
 ultralytics-thop
 

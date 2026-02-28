@@ -47,7 +47,11 @@ const AdminNavbar = () => {
       "after:content-[''] after:absolute after:bottom-0 after:left-0 after:w-full after:h-0.5 after:bg-purple-600";
     const hoverClasses = "hover:text-purple-600 transition-colors";
 
-    return location.pathname === path
+    // Check for exact match or if path starts with the route (for nested routes)
+    const isActive = location.pathname === path || 
+                     (path !== '/admin/dashboard' && location.pathname.startsWith(path));
+    
+    return isActive
       ? `${baseClasses} ${activeClasses}`
       : `${baseClasses} ${hoverClasses}`;
   };
@@ -74,6 +78,9 @@ const AdminNavbar = () => {
         </Link>
         <Link to="/admin/create-pipeline" className={getLinkClass("/admin/create-pipeline")}>
           Create Pipeline
+        </Link>
+        <Link to="/admin/stead" className={getLinkClass("/admin/stead")}>
+          STEAD
         </Link>
         <Link to="/admin/reports" className={getLinkClass("/admin/reports")}>
           Reports
