@@ -1249,4 +1249,4 @@ class TaskLogView(APIView):
             return Response({"log": content}, status=status.HTTP_200_OK)
             
         except Task.DoesNotExist:
-            return Response({"error": "Task not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Task not found."}, status=status.HTTP_404_NOT_FOUND) 
