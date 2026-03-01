@@ -6,7 +6,7 @@ import steadReducer from "./reducers/steadSlice";
 
 export const store = configureStore({
   reducer: {
-    user: userReducer, 
+    user: userReducer,
     models: modelReducer,
     containers: containerReducer,
     stead: steadReducer,
