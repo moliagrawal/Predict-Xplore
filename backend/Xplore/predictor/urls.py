@@ -17,7 +17,10 @@ from .views import (
     CreateContainer,
     RunContainer,
     stream_video,
-    GithubIntegration
+    GithubIntegration,
+    ContainerBGView,
+    TaskListView,
+    TaskLogView
 )
 
 urlpatterns = [
@@ -42,4 +45,7 @@ urlpatterns = [
     path('outputs/<uuid:job_id>/<str:filename>', stream_video, name='stream_video'),
     path('download/report/<str:report_id>', ReportDownloadView.as_view()),
     path('github-integration/', GithubIntegration.as_view(), name='github-integration'),
+    path('container-bg/', ContainerBGView.as_view(), name='container-bg'),
+    path('tasks/', TaskListView.as_view(), name='task-list'),
+    path('tasks/<uuid:task_id>/logs/', TaskLogView.as_view(), name='task-logs'),
 ]

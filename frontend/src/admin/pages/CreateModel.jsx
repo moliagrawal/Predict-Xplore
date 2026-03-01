@@ -127,6 +127,44 @@ function CreateModel() {
     }
   };
 
+  const handleBackgroundUpload = async () => {
+    if (!user || !user.token) {
+      alert("User or session token not found!");
+      return;
+    }
+
+    const token = user.token;
+
+    try {
+      let formData = new FormData();
+      if (!name || !description || !zipFile) {
+        alert("All fields are required for background creation!");
+        return;
+      }
+
+      formData.append("name", name);
+      formData.append("description", description);
+      formData.append("zipfile", zipFile);
+      formData.append("allowed_users", JSON.stringify(allowedUsers));
+
+      const response = await axios.post(
+        "http://127.0.0.1:8000/model/container-bg/",
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            Authorization: `Token ${token}`,
+          },
+        }
+      );
+      toast.success("Background Container task started!", { autoClose: 2000 });
+      console.log("Background upload:", response.data);
+    } catch (error) {
+      console.error("Error background uploading:", error);
+      toast.error("Background Upload failed.");
+    }
+  };
+
   return (
     <div className="h-screen w-screen bg-[#EAECFF] overflow-auto">
       <AdminNavbar />
@@ -327,10 +365,19 @@ function CreateModel() {
           <button
             type="button"
             onClick={handleUpload}
-            className="text-white bg-[#6966FF] hover:bg-blue-800 font-extrabold rounded-full text-2xl px-12 py-2.5"
+            className="text-white bg-[#6966FF] hover:bg-blue-800 font-extrabold rounded-full text-2xl px-12 py-2.5 mr-4"
           >
             {uploadMode === "standard" ? "Create Model" : "Create Container"}
           </button>
+          {uploadMode === "containerized" && (
+            <button
+              type="button"
+              onClick={handleBackgroundUpload}
+              className="text-blue-800 bg-white border-2 border-[#6966FF] hover:bg-gray-100 font-extrabold rounded-full text-2xl px-12 py-2.5"
+            >
+              Create in Background
+            </button>
+          )}
         </div>
       </div>
 

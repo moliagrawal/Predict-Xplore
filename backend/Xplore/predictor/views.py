@@ -14,6 +14,8 @@ import concurrent.futures
 from datetime import datetime
 from io import BytesIO
 from functools import cached_property
+import subprocess, sys, json
+import signal
 
 import numpy as np
 import torch
@@ -59,9 +61,10 @@ logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
-class uploaded_image:
-    session_test_image = None
-    encoded_image = {}
+from predictor.models import Task, Model, Pipeline, TestCase, Report, Container
+from django.forms.models import model_to_dict
+
+uploaded_image = {}
 
 def run_inference_call(weight, cv2_image):
     """
@@ -1128,3 +1131,122 @@ class GithubIntegration(APIView):
                     user, repo, branch, folder = match.groups()
                     self.api_call_url.append(f"https://api.github.com/repos/{user}/{repo}/contents/{folder}?ref={branch}")
         return self.api_call_url
+
+class ContainerBGView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        data = request.data
+        name = data.get('name')
+        description = data.get('description')
+        allowed_users = data.get('allowed_users', [])
+        
+        if not name or not description or "zipfile" not in request.FILES:
+            return Response({"error": "Missing required fields"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if Container.objects.filter(name=name).exists():
+            return Response({"error": f"Model with name '{name}' already exists"}, status=status.HTTP_400_BAD_REQUEST)
+
+        zip_file = request.FILES["zipfile"]
+        upload_dir = os.path.join(settings.MEDIA_ROOT, 'containers', 'uploads', name)
+        os.makedirs(upload_dir, exist_ok=True)
+        zip_path = os.path.join(upload_dir, f"{name}.zip")
+        
+        with open(zip_path, "wb+") as f:
+            for chunk in zip_file.chunks():
+                f.write(chunk)
+        
+        task = Task.objects.create(
+            task_name=f"Create Container: {name}",
+            user=request.user,
+            status='Pending'
+        )
+
+        payload = {
+            "zip_path": zip_path,
+            "name": name,
+            "description": description,
+            "allowed_users": allowed_users,
+            "created_by_id": request.user.id
+        }
+        
+        script_path = os.path.join(settings.BASE_DIR, 'bgprocessing', 'create_container_bg.py')
+        subprocess.Popen(
+            [sys.executable, script_path, str(task.task_id), json.dumps(payload)],
+            start_new_session=True
+        )
+
+        return Response({
+            "detail": "Container creation task started successfully.",
+            "task_id": task.task_id
+        }, status=status.HTTP_200_OK)
+
+    def delete(self, request, *args, **kwargs):
+        task_id = request.data.get('task_id') or request.query_params.get('task_id')
+        if not task_id:
+            return Response({"error": "task_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            task = Task.objects.get(task_id=task_id)
+            if task.status in ['Completed', 'Failed', 'Killed']:
+                return Response({"detail": "Task is already finished"}, status=status.HTTP_400_BAD_REQUEST)
+
+            if task.subprocess_id:
+                try:
+                    os.killpg(os.getpgid(task.subprocess_id), signal.SIGKILL)
+                except Exception:
+                    try:
+                        os.kill(task.subprocess_id, signal.SIGKILL)
+                    except Exception:
+                        pass
+            
+            if task.task_name.startswith("Create Container: "):
+                name = task.task_name.replace("Create Container: ", "")
+                image_name = f"user_{name}:latest"
+                subprocess.run(["pkill", "-f", f"docker build -t {image_name}"], capture_output=True)
+
+            task.status = 'Killed'
+            task.save()
+            
+            if task.log_file and os.path.exists(task.log_file):
+                with open(task.log_file, "a") as f:
+                    f.write("\n[System] Task killed by user.\n")
+
+            return Response({"detail": "Task killed successfully."}, status=status.HTTP_200_OK)
+        except Task.DoesNotExist:
+            return Response({"error": "Task not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+class TaskListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        tasks = Task.objects.all().order_by('-start_time')
+        data = [{
+            "task_id": str(t.task_id),
+            "task_name": t.task_name,
+            "user": t.user.username if t.user else None,
+            "subprocess_id": t.subprocess_id,
+            "status": t.status,
+            "start_time": t.start_time,
+            "end_time": t.end_time,
+            "log_file": bool(t.log_file)
+        } for t in tasks]
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class TaskLogView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, task_id, *args, **kwargs):
+        try:
+            task = Task.objects.get(task_id=task_id)
+            if not task.log_file or not os.path.exists(task.log_file):
+                return Response({"log": "Log file not found or empty."}, status=status.HTTP_404_NOT_FOUND)
+            
+            with open(task.log_file, "r") as f:
+                content = f.read()
+            return Response({"log": content}, status=status.HTTP_200_OK)
+            
+        except Task.DoesNotExist:
+            return Response({"error": "Task not found."}, status=status.HTTP_404_NOT_FOUND)

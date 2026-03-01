@@ -11,13 +11,13 @@ const AdminNavbar = () => {
 
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const user = useSelector((state) => state.user.users[state.user.users.length -1]);
-  
+  const user = useSelector((state) => state.user.users[state.user.users.length - 1]);
+
 
   const handleLogout = async () => {
-  const token = user.token;
-  const username = user.username;
-    try{
+    const token = user.token;
+    const username = user.username;
+    try {
       console.log(token)
       const response = await axios.post("http://127.0.0.1:8000/auth/logout", null, {
         headers: {
@@ -28,13 +28,13 @@ const AdminNavbar = () => {
 
       console.log(response.data)
 
-      if (response.status === 200){
+      if (response.status === 200) {
         dispatch(removeUser(username));
         dispatch(clearModelList());
         navigate("/login");
       }
     }
-    catch(err){
+    catch (err) {
       console.log(err)
       navigate("/login");
     }
@@ -77,6 +77,9 @@ const AdminNavbar = () => {
         </Link>
         <Link to="/admin/reports" className={getLinkClass("/admin/reports")}>
           Reports
+        </Link>
+        <Link to="/admin/tasks" className={getLinkClass("/admin/tasks")}>
+          Tasks
         </Link>
         <button
           onClick={handleLogout}

@@ -1,7 +1,9 @@
 import { createSlice } from "@reduxjs/toolkit";
 
+const savedUsers = localStorage.getItem("users");
+
 const initialState = {
-    users: []
+    users: savedUsers ? JSON.parse(savedUsers) : []
 };
 
 export const userSlice = createSlice({
@@ -19,10 +21,12 @@ export const userSlice = createSlice({
                 isActive: false // Default inactive after registration
             };
             state.users.push(newUser);
+            localStorage.setItem("users", JSON.stringify(state.users));
         },
 
         removeUser: (state, action) => {
             state.users = state.users.filter(user => user.username !== action.payload);
+            localStorage.setItem("users", JSON.stringify(state.users));
         },
 
         updateUserStatus: (state, action) => {
@@ -31,13 +35,14 @@ export const userSlice = createSlice({
             if (user) {
                 user.token = token;
                 user.isActive = isActive;
+                localStorage.setItem("users", JSON.stringify(state.users));
             }
         },
         addLogedUser: (state, action) => {
-            const {username, phone_number, role, roles, email, password, token, isActive } =  action.payload;
+            const { username, phone_number, role, roles, email, password, token, isActive } = action.payload;
             state.users = []
             const newUser = {
-                username:username,
+                username: username,
                 phone_number: phone_number,
                 role: role,
                 roles: roles,
@@ -47,10 +52,11 @@ export const userSlice = createSlice({
                 isActive: isActive // Default inactive after registration
             }
             state.users.push(newUser);
+            localStorage.setItem("users", JSON.stringify(state.users));
         }
     }
 });
 
-export const { addUser, addLogedUser,removeUser, updateUserStatus } = userSlice.actions;
+export const { addUser, addLogedUser, removeUser, updateUserStatus } = userSlice.actions;
 
 export default userSlice.reducer;

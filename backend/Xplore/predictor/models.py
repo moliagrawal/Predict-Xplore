@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import models
 from django.contrib.auth import get_user_model
+import uuid
 
 # Get the user model
 User = get_user_model()
@@ -85,3 +86,22 @@ class Container(models.Model):
 
     def __str__(self):
         return self.name
+
+class Task(models.Model):
+    STATUS_CHOICES = [
+        ('Pending', 'Pending'),
+        ('Running', 'Running'),
+        ('Completed', 'Completed'),
+        ('Failed', 'Failed'),
+    ]
+    task_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, help_text="Unique task identifier")
+    task_name = models.CharField(max_length=255, help_text="Name of the task")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, help_text="User who initiated the task", null=True, blank=True)
+    subprocess_id = models.IntegerField(null=True, blank=True, help_text="PID of the spawned subprocess")
+    start_time = models.DateTimeField(auto_now_add=True, help_text="Time the task started")
+    end_time = models.DateTimeField(null=True, blank=True, help_text="Time the task finished")
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='Pending', help_text="Current state of task")
+    log_file = models.CharField(max_length=500, null=True, blank=True, help_text="Path to log file")
+
+    def __str__(self):
+        return f"{self.task_name} - {self.status}"
