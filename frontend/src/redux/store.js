@@ -5,7 +5,7 @@ import containerReducer from "./reducers/containerSlice";
 
 export const store = configureStore({
   reducer: {
-    user: userReducer, 
+    user: userReducer,
     models: modelReducer,
     containers: containerReducer,
   },

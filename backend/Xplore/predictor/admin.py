@@ -1,10 +1,17 @@
 from django.contrib import admin
-from .models import Model, Pipeline, TestCase, Report
+from .models import Model, Pipeline, TestCase, Report, Task
 
 admin.site.register(Model)
 admin.site.register(Pipeline)
 admin.site.register(TestCase)
 admin.site.register(Report)
+
+@admin.register(Task)
+class TaskAdmin(admin.ModelAdmin):
+    list_display = ('task_id', 'task_name', 'user', 'status', 'start_time', 'end_time', 'subprocess_id')
+    search_fields = ('task_name', 'status')
+    list_filter = ('status', 'start_time')
+    ordering = ('-start_time',)
 
 
 # Customised models for trial purposes
