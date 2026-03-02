@@ -15,6 +15,7 @@ import ModelProceed from './admin/pages/ModelProceed';
 import AdminDashboard from './admin/pages/AdminDashboard';
 import AdminReport from './admin/pages/AdminReport';
 import AdminModelList from './admin/pages/AdminModelList';
+import Containers from './admin/pages/Containers';
 import { ToastContainer, Slide } from 'react-toastify';
 import ManageUser from './admin/pages/ManageUser';
 import ContainerTestRun from './components/ContainerTestRun';
@@ -45,6 +46,7 @@ function App() {
           {/* Admin Pages */}
           <Route path="/admin/dashboard" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
           <Route path="/admin/models" element={<ProtectedRoute><AdminModelList /></ProtectedRoute>} />
+          <Route path="/admin/containers" element={<ProtectedRoute><Containers /></ProtectedRoute>} />
           <Route path="/admin/create-model" element={<ProtectedRoute><CreateModel /></ProtectedRoute>} />
           <Route path="/admin/create-pipeline" element={<ProtectedRoute><CreatePipeline /></ProtectedRoute>} />
           <Route path="/admin/reports" element={<ProtectedRoute><AdminReport /></ProtectedRoute>} />
