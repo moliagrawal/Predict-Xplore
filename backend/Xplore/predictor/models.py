@@ -87,6 +87,16 @@ class Container(models.Model):
     def __str__(self):
         return self.name
 
+class ContainerGithub(models.Model):
+    container = models.OneToOneField(Container, on_delete=models.CASCADE, related_name='github_info', help_text="Linked container")
+    repo_url = models.URLField(max_length=500, help_text="GitHub Repository URL")
+    github_folder = models.CharField(max_length=255, help_text="Path to folder within the repository")
+    folder_hash = models.CharField(max_length=255, help_text="Latest commit SHA for this specific folder tree")
+    updated_at = models.DateTimeField(auto_now=True, help_text="Last time the update check was performed")
+
+    def __str__(self):
+        return f"GitHub Link for {self.container.name}"
+
 class Task(models.Model):
     STATUS_CHOICES = [
         ('Pending', 'Pending'),
