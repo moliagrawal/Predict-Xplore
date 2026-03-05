@@ -41,6 +41,7 @@ ALLOWED_HOSTS = []
 INSTALLED_APPS = [
     'users',
     'predictor',
+    'stead',  # STEAD anomaly detection app
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
