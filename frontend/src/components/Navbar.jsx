@@ -7,6 +7,7 @@ import { removeUser } from "../redux/reducers/userSlice";
 
 const Navbar = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useDispatch();
   const user = useSelector((state) => state.user.users[state.user.users.length -1]);
   
@@ -40,7 +41,11 @@ const Navbar = () => {
     const activeClasses = "after:content-[''] after:absolute after:bottom-0 after:left-0 after:w-full after:h-0.5 after:bg-purple-600";
     const hoverClasses = "hover:text-purple-600 transition-colors";
     
-    return location.pathname === path
+    // Check if current path matches or starts with the link path (for nested routes like /stead/*)
+    const isActive = location.pathname === path || 
+                     (path !== '/' && location.pathname.startsWith(path));
+    
+    return isActive
       ? `${baseClasses} ${activeClasses}`
       : `${baseClasses} ${hoverClasses}`;
   };
@@ -58,6 +63,9 @@ const Navbar = () => {
         </Link>
         <Link to="/model-test" className={getLinkClass("/model-test")}>
           Model Test
+        </Link>
+        <Link to="/stead" className={getLinkClass("/stead")}>
+          STEAD
         </Link>
         <Link to="/reports" className={getLinkClass("/reports")}>
           Reports

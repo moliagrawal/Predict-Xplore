@@ -41,6 +41,7 @@ ALLOWED_HOSTS = []
 INSTALLED_APPS = [
     'users',
     'predictor',
+    'stead',  # STEAD anomaly detection app
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -205,6 +206,10 @@ XAI_ALGOS = [
    # etc.
 ]
 # In Xplore/settings.py
+
+GITHUB_MODEL_URLS = [
+    "https://github.com/HarshitSahu01/Predict-Xplore/tree/main/backend/data/models"
+]
 
 # ... (all your other settings)
 

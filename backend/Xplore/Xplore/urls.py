@@ -19,6 +19,9 @@ urlpatterns = [
     # Predictor app (inference, models, etc.)
     path('model/', include('predictor.urls')),
 
+    # STEAD anomaly detection app
+    path('api/stead/', include('stead.urls')),
+
     # Remove this line:
     # path('model/output/<str:username>/<str:model_name>/', ModelOutputView.as_view(), name='model-output'),
 ]

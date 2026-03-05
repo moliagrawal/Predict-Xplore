@@ -6,6 +6,8 @@ import axios from "axios";
 import { toast } from "react-toastify";
 import SingleSelectDropdown from "../../components/SingleSelectDropdown";
 import { useSelector } from "react-redux";
+import GithubModelPicker from "../../components/GithubModelPicker";
+import GithubContainerWizard from "../../components/GithubContainerWizard";
 
 function CreateModel() {
   const user = useSelector(
@@ -17,6 +19,23 @@ function CreateModel() {
   // Common fields
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [showGithubPicker, setShowGithubPicker] = useState(false);
+  const [modelSourceType, setModelSourceType] = useState("file"); // "file" | "link"
+
+  const handleGithubModelSelection = (url) => {
+    setShowGithubPicker(false);
+    if (url) {
+      // For now, we'll store the URL. 
+      // Note: The backend currently expects a file or base64. 
+      // You may need to update the backend to handle URLs or fetch the file here.
+      setModelFile(url);
+      setModelSourceType("link");
+      setIsFileUploaded(true);
+      const fileName = url.split('/').pop();
+      if (!name) setName(fileName);
+      toast.info(`Selected GitHub model: ${fileName}`);
+    }
+  };
 
   // Standard mode fields
   const [modelFile, setModelFile] = useState(null);
@@ -28,8 +47,11 @@ function CreateModel() {
   const [isImageUploaded, setIsImageUploaded] = useState(false);
 
   // Containerized mode fields
+  const [containerSource, setContainerSource] = useState("zip"); // "zip" | "github"
   const [zipFile, setZipFile] = useState(null);
   const [isZipUploaded, setIsZipUploaded] = useState(false);
+  const [githubUrl, setGithubUrl] = useState("");
+  const [selectedFolder, setSelectedFolder] = useState("");
   const [allowedUsers, setAllowedUsers] = useState([]);
 
   const classes = ["class 1", "class 5", "class 3", "class 4"];
@@ -52,8 +74,8 @@ function CreateModel() {
       let formData = new FormData();
 
       if (uploadMode === "standard") {
-        if (!name || !description || !modelFile || !modelImage || !modelType) {
-          alert("All fields are required!");
+        if (!name || !description || !modelFile || !modelType) {
+          alert("Name, Description, Model File, and Model Type are required!");
           return;
         }
 
@@ -65,6 +87,7 @@ function CreateModel() {
         formData.append("created_by", user.username);
         formData.append("classes", JSON.stringify(selectedClass));
         formData.append("roles", JSON.stringify(selectedRoles));
+        formData.append("model_source_type", modelSourceType);
 
         const response = await axios.post(
           "http://127.0.0.1:8000/model/create",
@@ -105,6 +128,59 @@ function CreateModel() {
     } catch (error) {
       console.error("Error uploading:", error);
       toast.error("Upload failed.");
+    }
+  };
+
+  const handleBackgroundUpload = async () => {
+    if (!user || !user.token) {
+      alert("User or session token not found!");
+      return;
+    }
+
+    const token = user.token;
+
+    try {
+      let formData = new FormData();
+      if (!name || !description) {
+        alert("Name and description are required for background creation!");
+        return;
+      }
+
+      if (containerSource === "zip" && !zipFile) {
+        alert("A zip file must be uploaded.");
+        return;
+      }
+      if (containerSource === "github" && (!githubUrl || !selectedFolder)) {
+        alert("A valid GitHub URL and selected folder is required.");
+        return;
+      }
+
+      formData.append("name", name);
+      formData.append("description", description);
+      formData.append("allowed_users", JSON.stringify(allowedUsers));
+
+      if (containerSource === "zip") {
+        formData.append("zipfile", zipFile);
+      } else {
+        formData.append("repo_url", githubUrl);
+        formData.append("github_folder", selectedFolder);
+      }
+
+      const response = await axios.post(
+        "http://127.0.0.1:8000/model/container-bg/",
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            Authorization: `Token ${token}`,
+          },
+        }
+      );
+      toast.success("Background Container task started!", { autoClose: 2000 });
+      console.log("Background upload:", response.data);
+    } catch (error) {
+      console.error("Error background uploading:", error);
+      toast.error(error.response?.data?.error || "Background Upload failed.");
     }
   };
 
@@ -167,6 +243,15 @@ function CreateModel() {
             <div className="mt-5 flex items-center justify-center w-full h-[25vh] bg-white rounded-2xl">
               {/* Model File */}
               <div className="m-8 pr-20">
+                <p
+                  className="my-2 text-xl text-gray-500 cursor-pointer hover:underline caret-transparent hover:text-blue-600 transition-colors"
+                  onClick={() => setShowGithubPicker(true)}
+                >
+                  Import from github
+                </p>
+
+              </div>
+              <div className="m-8 pr-20">
                 <label htmlFor="model-file" className="cursor-pointer">
                   <div className="flex flex-col items-center">
                     {isFileUploaded ? (
@@ -193,6 +278,7 @@ function CreateModel() {
                     className="hidden"
                     onChange={(e) => {
                       setModelFile(e.target.files[0]);
+                      setModelSourceType("file");
                       setIsFileUploaded(true);
                     }}
                   />
@@ -242,44 +328,58 @@ function CreateModel() {
           </>
         ) : (
           <>
-            {/* Containerized Upload (ZIP) */}
-            <div className="mt-5 flex items-center justify-center w-full h-[20vh] bg-white rounded-2xl">
-              <div className="m-8">
-                <label htmlFor="zip-file" className="cursor-pointer">
-                  <div className="flex flex-col items-center">
+            {/* Containerized Upload */}
+            <div className="mt-5 w-full bg-white rounded-2xl p-6 shadow-sm">
+              <div className="flex border-b mb-6">
+                <button
+                  className={`py-2 px-6 font-semibold text-lg ${containerSource === 'zip' ? 'border-b-4 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                  onClick={() => setContainerSource('zip')}
+                >
+                  ZIP Upload
+                </button>
+                <button
+                  className={`py-2 px-6 font-semibold text-lg flex items-center gap-2 ${containerSource === 'github' ? 'border-b-4 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                  onClick={() => setContainerSource('github')}
+                >
+                  GitHub Source
+                </button>
+              </div>
+
+              {containerSource === 'zip' ? (
+                <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 transition hover:bg-gray-100">
+                  <label htmlFor="zip-file" className="cursor-pointer flex flex-col items-center">
                     {isZipUploaded ? (
-                      <svg
-                        className="h-20 w-20 animate-pulse text-green-600"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M5 13l4 4L19 7"
-                        />
+                      <svg className="h-20 w-20 text-green-500 mb-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     ) : (
-                      <img src={upload} alt="Upload zip" className="h-20" />
+                      <img src={upload} alt="Upload zip" className="h-20 mb-4 opacity-70" />
                     )}
-                  </div>
-                  <input
-                    id="zip-file"
-                    type="file"
-                    className="hidden"
-                    accept=".zip"
-                    onChange={(e) => {
-                      setZipFile(e.target.files[0]);
-                      setIsZipUploaded(true);
-                    }}
-                  />
-                </label>
-                <p className="my-2 text-xl text-gray-500">
-                  Upload ZIP for containerization
-                </p>
-              </div>
+                    <span className="text-xl font-medium text-gray-700">
+                      {isZipUploaded ? zipFile?.name : "Select ZIP archive"}
+                    </span>
+                    <input
+                      id="zip-file"
+                      type="file"
+                      className="hidden"
+                      accept=".zip"
+                      onChange={(e) => {
+                        setZipFile(e.target.files[0]);
+                        setIsZipUploaded(true);
+                      }}
+                    />
+                  </label>
+                  <p className="mt-2 text-sm text-gray-500 text-center max-w-md">Upload a ZIP containing your Dockerfile, requirements.txt, and inference.py script.</p>
+                </div>
+              ) : (
+                <GithubContainerWizard
+                  githubUrl={githubUrl}
+                  setGithubUrl={setGithubUrl}
+                  selectedFolder={selectedFolder}
+                  setSelectedFolder={setSelectedFolder}
+                  token={user?.token}
+                />
+              )}
             </div>
 
             {/* Allowed Users */}
@@ -298,12 +398,25 @@ function CreateModel() {
           <button
             type="button"
             onClick={handleUpload}
-            className="text-white bg-[#6966FF] hover:bg-blue-800 font-extrabold rounded-full text-2xl px-12 py-2.5"
+            className="text-white bg-[#6966FF] hover:bg-blue-800 font-extrabold rounded-full text-2xl px-12 py-2.5 mr-4"
           >
             {uploadMode === "standard" ? "Create Model" : "Create Container"}
           </button>
+          {uploadMode === "containerized" && (
+            <button
+              type="button"
+              onClick={handleBackgroundUpload}
+              className="text-blue-800 bg-white border-2 border-[#6966FF] hover:bg-gray-100 font-extrabold rounded-full text-2xl px-12 py-2.5"
+            >
+              Create in Background
+            </button>
+          )}
         </div>
       </div>
+
+      {showGithubPicker && (
+        <GithubModelPicker modelClosed={handleGithubModelSelection} />
+      )}
     </div>
   );
 }
