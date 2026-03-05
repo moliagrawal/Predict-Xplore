@@ -750,8 +750,22 @@ class ModelOutputView(APIView):
 
 
 def container_list(request):
-    container = Container.objects.values('id', 'name', 'description', 'created_at')
-    return JsonResponse({"containers": list(container)}, safe=False)
+    containers = Container.objects.select_related('github_info').all()
+    data = []
+    for c in containers:
+        item = {
+            'id': c.id,
+            'name': c.name,
+            'description': c.description,
+            'created_at': c.created_at.isoformat() if c.created_at else None,
+            'has_github': hasattr(c, 'github_info'),
+        }
+        if hasattr(c, 'github_info'):
+            item['github_repo_url'] = c.github_info.repo_url
+            item['github_folder'] = c.github_info.github_folder
+            item['folder_hash'] = c.github_info.folder_hash
+        data.append(item)
+    return JsonResponse({"containers": data}, safe=False)
 
 
 class CreateContainer(APIView):
@@ -1139,22 +1153,38 @@ class ContainerBGView(APIView):
         data = request.data
         name = data.get('name')
         description = data.get('description')
-        allowed_users = data.get('allowed_users', [])
+        allowed_users = data.get('allowed_users')
+        if isinstance(allowed_users, str):
+            import json
+            try:
+                allowed_users = json.loads(allowed_users)
+            except:
+                allowed_users = []
+        if not allowed_users:
+            allowed_users = []
+            
+        repo_url = data.get('repo_url')
+        github_folder = data.get('github_folder')
         
-        if not name or not description or "zipfile" not in request.FILES:
-            return Response({"error": "Missing required fields"}, status=status.HTTP_400_BAD_REQUEST)
+        if not name or not description:
+            return Response({"error": "Missing required name or description"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        if not repo_url and "zipfile" not in request.FILES:
+            return Response({"error": "Must provide either a zipfile or a GitHub repository URL"}, status=status.HTTP_400_BAD_REQUEST)
         
         if Container.objects.filter(name=name).exists():
             return Response({"error": f"Model with name '{name}' already exists"}, status=status.HTTP_400_BAD_REQUEST)
 
-        zip_file = request.FILES["zipfile"]
-        upload_dir = os.path.join(settings.MEDIA_ROOT, 'containers', 'uploads', name)
-        os.makedirs(upload_dir, exist_ok=True)
-        zip_path = os.path.join(upload_dir, f"{name}.zip")
-        
-        with open(zip_path, "wb+") as f:
-            for chunk in zip_file.chunks():
-                f.write(chunk)
+        zip_path = None
+        if "zipfile" in request.FILES:
+            zip_file = request.FILES["zipfile"]
+            upload_dir = os.path.join(settings.MEDIA_ROOT, 'containers', 'uploads', name)
+            os.makedirs(upload_dir, exist_ok=True)
+            zip_path = os.path.join(upload_dir, f"{name}.zip")
+            
+            with open(zip_path, "wb+") as f:
+                for chunk in zip_file.chunks():
+                    f.write(chunk)
         
         task = Task.objects.create(
             task_name=f"Create Container: {name}",
@@ -1163,17 +1193,24 @@ class ContainerBGView(APIView):
         )
 
         payload = {
-            "zip_path": zip_path,
             "name": name,
             "description": description,
             "allowed_users": allowed_users,
             "created_by_id": request.user.id
         }
         
+        if zip_path:
+            payload["zip_path"] = zip_path
+        if repo_url:
+            payload["repo_url"] = repo_url
+            payload["github_folder"] = github_folder
+        
         script_path = os.path.join(settings.BASE_DIR, 'bgprocessing', 'create_container_bg.py')
         subprocess.Popen(
             [sys.executable, script_path, str(task.task_id), json.dumps(payload)],
-            start_new_session=True
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
         )
 
         return Response({
@@ -1215,6 +1252,197 @@ class ContainerBGView(APIView):
             return Response({"detail": "Task killed successfully."}, status=status.HTTP_200_OK)
         except Task.DoesNotExist:
             return Response({"error": "Task not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+class GithubTreeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        repo_url = request.query_params.get('repo_url')
+        if not repo_url:
+            return Response({"error": "Missing repo_url parameter"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        import re, requests
+        # Expected URL format: https://github.com/user/repo
+        pattern = r'https://github\.com/([^/]+)/([^/]+)'
+        match = re.match(pattern, repo_url)
+        if not match:
+            return Response({"error": "Invalid GitHub repository URL"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        user, repo = match.groups()
+        
+        # Get default branch
+        api_base = f"https://api.github.com/repos/{user}/{repo}"
+        repo_info_resp = requests.get(api_base, timeout=10)
+        if repo_info_resp.status_code != 200:
+            return Response({"error": "Failed to fetch repository information. Does it exist?"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        repo_info = repo_info_resp.json()
+        default_branch = repo_info.get("default_branch", "main")
+        
+        # Get tree recursively
+        tree_resp = requests.get(f"{api_base}/git/trees/{default_branch}?recursive=1", timeout=10)
+        if tree_resp.status_code != 200:
+            return Response({"error": "Failed to fetch repository tree."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        tree_data = tree_resp.json().get("tree", [])
+        
+        # Extract directories
+        folders = ["/"]
+        for item in tree_data:
+            if item["type"] == "tree":
+                folders.append(f"/{item['path']}")
+                
+        folders.sort()
+        return Response({"folders": folders}, status=status.HTTP_200_OK)
+
+
+class ContainerManagementView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, *args, **kwargs):
+        container_id = request.data.get('container_id') or request.query_params.get('container_id')
+        if not container_id:
+            return Response({"error": "container_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            container = Container.objects.get(id=container_id)
+            import shutil, subprocess
+            # Delete uploads directory
+            upload_dir = os.path.join(settings.MEDIA_ROOT, 'containers', 'uploads', container.name)
+            if os.path.exists(upload_dir):
+                shutil.rmtree(upload_dir)
+            
+            # Remove docker image
+            image_name = f"user_{container.name}:latest"
+            subprocess.run(["docker", "rmi", "-f", image_name], capture_output=True)
+            
+            container.delete()
+            return Response({"detail": "Container deleted successfully."}, status=status.HTTP_200_OK)
+        except Container.DoesNotExist:
+            return Response({"error": "Container not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    def get(self, request, *args, **kwargs):
+        # Check for updates
+        container_id = request.query_params.get('container_id')
+        if not container_id:
+            return Response({"error": "container_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            container = Container.objects.get(id=container_id)
+            if not hasattr(container, 'github_info'):
+                return Response({"error": "Container is not linked to GitHub"}, status=status.HTTP_400_BAD_REQUEST)
+                
+            gh_info = container.github_info
+            
+            import re, requests
+            pattern = r'https://github\.com/([^/]+)/([^/]+)'
+            match = re.match(pattern, gh_info.repo_url)
+            if not match:
+                return Response({"error": "Invalid stored GitHub repository URL"}, status=status.HTTP_400_BAD_REQUEST)
+                
+            user, repo = match.groups()
+            
+            api_base = f"https://api.github.com/repos/{user}/{repo}"
+            repo_info_resp = requests.get(api_base, timeout=10)
+            if repo_info_resp.status_code != 200:
+                return Response({"error": "Failed to fetch remote repository information."}, status=status.HTTP_400_BAD_REQUEST)
+                
+            default_branch = repo_info_resp.json().get("default_branch", "main")
+            
+            # Fetch remote folder hash
+            folder = gh_info.github_folder.strip("/")
+            
+            if not folder:
+                # Root folder hash is the hash of the tree of the branch commit
+                commit_resp = requests.get(f"{api_base}/commits/{default_branch}", timeout=10)
+                if commit_resp.status_code == 200:
+                    remote_hash = commit_resp.json()["commit"]["tree"]["sha"]
+                else:
+                    return Response({"error": "Failed to get remote root tree"}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                # Need to find the folder's tree SHA
+                parent_dir = os.path.dirname(folder)
+                basename = os.path.basename(folder)
+                
+                if parent_dir == "":
+                    tree_url = f"{api_base}/git/trees/{default_branch}"
+                else:
+                    tree_url = f"{api_base}/contents/{parent_dir}?ref={default_branch}"
+                    
+                parent_resp = requests.get(tree_url, timeout=10)
+                if parent_resp.status_code != 200:
+                    return Response({"error": f"Failed to get remote tree for {parent_dir}"}, status=status.HTTP_400_BAD_REQUEST)
+                    
+                parent_data = parent_resp.json()
+                if isinstance(parent_data, dict) and "tree" in parent_data:
+                    items = parent_data.get("tree", [])
+                else:
+                    items = parent_data
+                
+                remote_hash = None
+                for item in items:
+                    if item.get("name") == basename or item.get("path", "").endswith(basename):
+                        remote_hash = item.get("sha")
+                        break
+                        
+                if not remote_hash:
+                    return Response({"error": f"Folder {folder} no longer exists in repository."}, status=status.HTTP_404_NOT_FOUND)
+            
+            is_update_available = remote_hash != gh_info.folder_hash
+            
+            return Response({
+                "update_available": is_update_available,
+                "local_hash": gh_info.folder_hash,
+                "remote_hash": remote_hash
+            }, status=status.HTTP_200_OK)
+            
+        except Container.DoesNotExist:
+            return Response({"error": "Container not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+class ContainerUpdateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        container_id = request.data.get('container_id')
+        target_hash = request.data.get('target_hash')
+        
+        if not container_id or not target_hash:
+            return Response({"error": "container_id and target_hash are required"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            container = Container.objects.get(id=container_id)
+            if not hasattr(container, 'github_info'):
+                return Response({"error": "Container is not linked to GitHub"}, status=status.HTTP_400_BAD_REQUEST)
+                
+            task = Task.objects.create(
+                task_name=f"Update Container: {container.name}",
+                user=request.user,
+                status='Pending'
+            )
+            
+            payload = {
+                "container_id": container.id,
+                "target_hash": target_hash
+            }
+            
+            script_path = os.path.join(settings.BASE_DIR, 'bgprocessing', 'update_container_github_bg.py')
+            import subprocess, sys, json
+            subprocess.Popen(
+                [sys.executable, script_path, str(task.task_id), json.dumps(payload)],
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            
+            return Response({
+                "detail": "Update task started successfully.",
+                "task_id": task.task_id
+            }, status=status.HTTP_200_OK)
+            
+        except Container.DoesNotExist:
+            return Response({"error": "Container not found."}, status=status.HTTP_404_NOT_FOUND)
 
 
 class TaskListView(APIView):
